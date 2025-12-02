@@ -19,7 +19,8 @@ jobs:
 
     steps:
       # ───────────────────────────── CHECKOUT ─────────────────────────────
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       # ───────────────────── VERSION USING COMMIT HASH ────────────────────
       - name: Set version
@@ -32,6 +33,9 @@ jobs:
           distribution: temurin
           java-version: 8
 
+      - name: Make mvnw executable
+        run: chmod +x ./mvnw
+        
       - name: Cache Maven
         uses: actions/cache@v3
         with:
