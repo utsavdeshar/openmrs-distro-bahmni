@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - master
+      - dev
       - 'release-*'
     tags:
       - '[0-9]+.[0-9]+.[0-9]+'
@@ -14,15 +15,22 @@ jobs:
   build-publish-docker-helm:
     name: Build & Publish Docker Image & Helm Chart
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     env:
       HELM_CHART_PATH: package/helm/openmrs
     steps:
       - uses: actions/checkout@v2
-      - name: Set env.ARTIFACT_VERSION
+      - name: Get commit hash
+        id: get_commit_hash
         run: |
-          wget -q https://raw.githubusercontent.com/Bahmni/bahmni-infra-utils/main/setArtifactVersion.sh && chmod +x setArtifactVersion.sh
-          ./setArtifactVersion.sh
-          rm setArtifactVersion.sh
+          echo "COMMIT_HASH=$(git rev-parse HEAD)" >> $GITHUB_ENV
+      # - name: Set env.ARTIFACT_VERSION
+      #   run: |
+      #     wget -q https://raw.githubusercontent.com/Bahmni/bahmni-infra-utils/main/setArtifactVersion.sh && chmod +x setArtifactVersion.sh
+      #     ./setArtifactVersion.sh
+      #     rm setArtifactVersion.sh
       - name: Set up JDK 1.8
         uses: actions/setup-java@v1
         with:
@@ -36,56 +44,96 @@ jobs:
       - name: Build with Maven
         run: |
           ./mvnw --no-transfer-progress -U clean install
-        env:
-          USER_NAME: ${{ secrets.USERNAME }}
-          ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # env:
+        #   USER_NAME: ${{ secrets.USERNAME }}
+        #   ACCESS_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v2
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v2
-      - name: Login to DockerHub
-        uses: docker/login-action@v2
+
+        # ── Authenticate to Google Cloud via OIDC ───────────────────────────────
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
-      - name: Docker Build and push
-        uses: docker/build-push-action@v3
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          file: package/docker/openmrs/Dockerfile
-          push: true
-          tags: bahmni/openmrs:${{ env.ARTIFACT_VERSION }},bahmni/openmrs:latest
-      - name: Update Version and Image Tag
+          token_format: access_token
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER_ID }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      # ── Login to Google Artifact Registry ───────────────────────────────────
+      #- name: Login to Google Artifact Registry
+      #  uses: docker/login-action@v3
+      #  with:
+      #    registry: ${{ vars.REGISTRY }}
+      #    username: oauth2accesstoken
+      #    password: ${{ steps.auth.outputs.access_token }}
+
+      # ── Build & Push to Artifact Registry ──────────────────────────────────
+      - name: Docker Build & Push to Artifact Registry
+        env:
+          IMAGE_NAME: ${{ vars.IMAGE_NAME }}
+          REGISTRY: ${{ vars.REGISTRY }}
+          IMAGE_TAG: ${{ env.COMMIT_HASH }}
+          DEFAULT_TAG: latest
         run: |
-          yq --inplace '.image.tag = "${{ env.ARTIFACT_VERSION }}"' $HELM_CHART_PATH/values.yaml
-          yq --inplace '.version = "${{ env.ARTIFACT_VERSION }}"' $HELM_CHART_PATH/Chart.yaml
-      - name: Helm Lint
-        run: helm lint $HELM_CHART_PATH
+          echo "Building and pushing Docker image..."
+          echo "Using registry: $REGISTRY"
+          echo "Using image name: $IMAGE_NAME"
+          echo "Using image tag: $IMAGE_TAG"
+          echo "Using default tag: $DEFAULT_TAG"
+          echo "Building Docker image..."
+          docker build -f package/docker/openmrs/Dockerfile -t $REGISTRY/$IMAGE_NAME:$IMAGE_TAG -t $REGISTRY/$IMAGE_NAME:$DEFAULT_TAG .
 
-      - name: Helm Package
-        run: helm package $HELM_CHART_PATH
+          echo "Pushing Docker image..."
+          docker push $REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+          docker push $REGISTRY/$IMAGE_NAME:$DEFAULT_TAG
+          echo "Docker image pushed successfully!"
+      
+       - name: Login to DockerHub
+         uses: docker/login-action@v2
+         with:
+           username: ${{ secrets.DOCKER_HUB_USERNAME }}
+           password: ${{ secrets.DOCKER_HUB_TOKEN }}
+       - name: Docker Build and push
+         uses: docker/build-push-action@v3
+         with:
+           context: .
+           platforms: linux/amd64,linux/arm64
+           file: package/docker/openmrs/Dockerfile
+           push: true
+           tags: anish443/openmrs:${{ env.ARTIFACT_VERSION }},anish443/openmrs:latest
+       - name: Update Version and Image Tag
+         run: |
+           yq --inplace '.image.tag = "${{ env.ARTIFACT_VERSION }}"' $HELM_CHART_PATH/values.yaml
+           yq --inplace '.version = "${{ env.ARTIFACT_VERSION }}"' $HELM_CHART_PATH/Chart.yaml
+       - name: Helm Lint
+         run: helm lint $HELM_CHART_PATH
 
-      - name: Checkout Charts Repository
-        uses: actions/checkout@v2
-        with:
-          repository: Bahmni/helm-charts
-          ref: gh-pages
-          path: helm-charts
-          persist-credentials: false
+      # - name: Helm Package
+      #   run: helm package $HELM_CHART_PATH
 
-      - name: Copy Helm Archive
-        run: cp openmrs-${{ env.ARTIFACT_VERSION }}.tgz helm-charts/openmrs/
+      # - name: Checkout Charts Repository
+      #   uses: actions/checkout@v2
+      #   with:
+      #     repository: Bahmni/helm-charts
+      #     ref: gh-pages
+      #     path: helm-charts
+      #     persist-credentials: false
 
-      - name: Helm Index
-        working-directory: helm-charts/
-        run: helm repo index --merge index.yaml --url https://bahmni.github.io/helm-charts/  .
+      # - name: Copy Helm Archive
+      #   run: cp openmrs-${{ env.ARTIFACT_VERSION }}.tgz helm-charts/openmrs/
 
-      - name: Commit and Push Chart Repository
-        working-directory: helm-charts/
-        run: |
-          git config user.name ${{ secrets.BAHMNI_USERNAME}}
-          git config user.email ${{ secrets.BAHMNI_EMAIL}}
-          git add .
-          git commit -m "Release of openmrs-${{ env.ARTIFACT_VERSION }}"
-          git push 'https://${{ secrets.BAHMNI_USERNAME}}:${{ secrets.BAHMNI_PAT}}@github.com/bahmni/helm-charts.git' gh-pages
+      # - name: Helm Index
+      #   working-directory: helm-charts/
+      #   run: helm repo index --merge index.yaml --url https://bahmni.github.io/helm-charts/  .
+
+      # - name: Commit and Push Chart Repository
+      #   working-directory: helm-charts/
+      #   run: |
+      #     git config user.name ${{ secrets.BAHMNI_USERNAME}}
+      #     git config user.email ${{ secrets.BAHMNI_EMAIL}}
+      #     git add .
+      #     git commit -m "Release of openmrs-${{ env.ARTIFACT_VERSION }}"
+      #     git push 'https://${{ secrets.BAHMNI_USERNAME}}:${{ secrets.BAHMNI_PAT}}@github.com/bahmni/helm-charts.git' gh-pages
