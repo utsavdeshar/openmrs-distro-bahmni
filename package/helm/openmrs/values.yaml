@@ -1,0 +1,83 @@
+replicaCount: 1
+
+OPENMRS_APPLICATION_DATA_DIRECTORY: /openmrs/data
+
+global:
+  storageClass: ""
+  nodeSelector: {}
+  affinity: {}
+  tolerations: {}
+  TZ: "UTC"
+
+metadata:
+  labels:
+    environment: dev
+
+image:
+  repository: bahmni
+  name: openmrs
+  tag: latest
+
+service:
+  type: ClusterIP
+  port: 8080
+  jmxport: 8280
+
+config:
+  OMRS_AUTO_UPDATE_DATABASE: true
+  OMRS_CREATE_TABLES: true
+  OMRS_DB_NAME: openmrs
+  OMRS_DEV_DEBUG_PORT: ""
+  OMRS_MODULE_WEB_ADMIN: false
+  OMRS_JAVA_SERVER_OPTS: ""
+  OMRS_JAVA_MEMORY_OPTS: ""
+  OPENELIS_HOST: openelis
+  OPENELIS_PORT: '8052'
+  MAIL_TRANSPORT_PROTOCOL: smtps
+  MAIL_SMTP_AUTH: true
+  MAIL_SMTP_STARTTLS_ENABLE: true
+  MAIL_SMTP_SSL_ENABLE: true
+  MAIL_DEBUG: false
+  SEND_MAIL: ""
+  MAIL_FROM: ""
+  MAIL_SMTP_PORT: ""
+  MAIL_SMTP_HOST: ""
+  OMRS_DOCKER_ENV: 'false'
+  OMRS_C3P0_MAX_SIZE: 50
+
+secrets:
+  OMRS_DB_HOSTNAME: ""
+  OMRS_DB_USERNAME: ""
+  OMRS_DB_PASSWORD: ""
+  OPENELIS_ATOMFEED_USER: ""
+  OPENELIS_ATOMFEED_PASSWORD: ""
+  MAIL_USER: ""
+  MAIL_PASSWORD: ""
+
+resources: {}
+
+autoscaling:
+  enabled: false
+#  minReplicas: 1
+#  maxReplicas: 5
+#  targetCPUUtilizationPercentage: 80
+  # targetMemoryUtilizationPercentage: 80
+
+volumes:
+  patientDocuments:
+    capacity: "2Gi"
+    claimName: openmrs-document-images-pvc
+  patientImages:
+    capacity: "2Gi"
+    claimName: openmrs-patient-images-pvc
+  initializerChecksums:
+    capacity: "1Gi"
+  clinicalForms:
+    capacity: "1Gi"
+  uploadedResults:
+    capacity: "2Gi"
+  uploadedFiles:
+    capacity: "2Gi"
+nodeSelector: {}
+affinity: {}
+tolerations: {}
