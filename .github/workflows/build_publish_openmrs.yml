@@ -53,14 +53,14 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
         # ── Authenticate to Google Cloud via OIDC ───────────────────────────────
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: google-github-actions/auth@v2
-        with:
-          token_format: access_token
-          project_id: ${{ secrets.GCP_PROJECT_ID }}
-          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER_ID }}
-          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+     # - name: Authenticate to Google Cloud
+     #   id: auth
+     #   uses: google-github-actions/auth@v2
+     #   with:
+     #     token_format: access_token
+     #     project_id: ${{ secrets.GCP_PROJECT_ID }}
+     #     workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER_ID }}
+     #     service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
 
       # ── Login to Google Artifact Registry ───────────────────────────────────
       #- name: Login to Google Artifact Registry
@@ -103,7 +103,7 @@ jobs:
            platforms: linux/amd64,linux/arm64
            file: package/docker/openmrs/Dockerfile
            push: true
-           tags: anish443/openmrs:${{ env.ARTIFACT_VERSION }},anish443/openmrs:latest
+           tags: utsavd/openmrs:${{ env.ARTIFACT_VERSION }},utsavd/openmrs:latest
        - name: Update Version and Image Tag
          run: |
            yq --inplace '.image.tag = "${{ env.ARTIFACT_VERSION }}"' $HELM_CHART_PATH/values.yaml
